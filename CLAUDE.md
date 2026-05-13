@@ -49,7 +49,13 @@ When in doubt about behavior, fetch the spec. Don't guess from the script commen
 
 This repo's work is coordinated with the Bridge project (design authority) via QB drives. Bridge owns design decisions, specs, and quality validation. Claude Code owns code execution, testing, and deployment.
 
-*Protocol details to be added when the multi-tool standard is defined (Claude Code Migration drive, Steps 2-4).*
+**QB doc:** QB-HOLOCRON-ROUTINE.md on Quicksilver Gist (`287eb4fd487bff8f06e53bcf6cd18f2b`). Contains step plan, session history, and design decisions. The Claude Code Context section at the bottom tracks repo state for Bridge visibility.
+
+**Protocol:**
+- Steps in the QB step table are tagged `[Bridge]` or `[Claude Code]`. Execute only your tool's steps.
+- After every Claude Code session, update the QB doc's Claude Code Context section (repo state, test status, open items) and check in via QB-REGISTRY.md on Bridge Gist (`7f983152470de13b03ed60bc0556957b`).
+- When you need design clarification that isn't in the spec files, note it in the QB doc's Open Items. Bridge picks it up on next session.
+- Bridge reads this CLAUDE.md before assessing code quality. Keep it current with repo state.
 
 ## Current State (Stage 1 Complete)
 
