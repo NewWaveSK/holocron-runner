@@ -1,0 +1,3 @@
+# Stage 1: stdlib-only (urllib, json, re, datetime).
+# Stage 2 (next session): add `anthropic` for editorial phase API calls.
+# anthropic>=0.40.0
