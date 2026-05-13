@@ -241,7 +241,7 @@ def parse_registry(content: str) -> dict:
             in_meta = True
             in_users = False
             continue
-        if line.startswith("## Users"):
+        if line.startswith("## Users") or line.startswith("## Registry"):
             in_meta = False
             in_users = True
             user_header_seen = False
@@ -268,6 +268,25 @@ def parse_registry(content: str) -> dict:
             row = dict(zip(user_columns, cells))
             if row.get("username"):
                 users.append(row)
+
+    # Safety check: if we found 0 users but raw content has pipe-delimited
+    # data rows (beyond header/separator), something went wrong — HALT rather
+    # than silently returning an empty registry that gets written back.
+    if not users:
+        table_rows = [
+            l for l in lines
+            if l.strip().startswith("|")
+            and not all(c.replace("-", "").replace(":", "").strip() == ""
+                        for c in l.strip().strip("|").split("|"))
+        ]
+        # Subtract 1 for the header row itself
+        data_rows = max(0, len(table_rows) - 1) if table_rows else 0
+        if data_rows > 0:
+            raise RuntimeError(
+                f"parse_registry found 0 users but raw content has {data_rows} "
+                f"data rows in a table. Possible schema mismatch or parse failure. "
+                f"HALTING to prevent data loss."
+            )
 
     return {
         "metadata": metadata,
