@@ -27,8 +27,10 @@ These files define WHAT to build. They live on the Quicksilver Gist, not in this
 - **HOLOCRON-ROUTINE-SPEC.md (v0.3)** — overall routine architecture: schedule, triage logic (7-step decision tree, 5 cadence tiers), day rollover, dormancy, source refresh detection, quality gates, failure diagnostics, concurrency/safety, proceed gate replacements.
 - **HOLOCRON-RUNNER.md (v1.61)** — per-phase execution logic for the 8-phase Holocron pipeline. This is what Stage 2 translates into Python + API calls.
 - **QUICKSILVER-SCHEMA.md** — JSON schema for user display files.
-- **QUICKSILVER-CONTENT.md** — shared content (medals, habit categories, messaging templates).
+- **QUICKSILVER-CONTENT.md** — shared content (medals, habit categories, messaging templates). This file is the content authority for all shared text. Editorial phases must reference it. Do not invent content that belongs here.
 - **NW-MENUS.md** — menu definitions.
+
+**State vs Spec awareness:** Specs define behavior and change rarely. State files (USER-*.json, event logs, run log) change every run. Fetch specs fresh when a version bump may have occurred. Do not cache stale specs across sessions.
 
 When in doubt about behavior, fetch the spec. Don't guess from the script comments.
 
@@ -39,6 +41,15 @@ When in doubt about behavior, fetch the spec. Don't guess from the script commen
 - **Data loss prevention.** The `parse_registry()` safety check exists because the first routine run wiped all user data due to a schema mismatch. Any function that reads data and writes it back must verify it hasn't lost rows, fields, or content. If parsed output is emptier than raw input, halt.
 - **Confidence Calibration.** When declaring something "fixed" or "working," distinguish between empirical evidence (test output matches expected) and reasoning alone. If reasoning only, recommend a specific test.
 - **Per-user isolation.** One user's failure must never block other users' processing. Catch exceptions per-user, log diagnostics, continue to next user.
+- **Post-failure diagnostics.** When any operation fails, the first question is: "What did I send, and where did it come from?" Report input values and their sources before theorizing about external causes. If the input was fabricated or inferred, say so immediately. Never attribute a failure caused by bad input to an external system.
+- **Precedent is not a rule.** A prior run succeeding does not mean skip validation checks on the next run. Each run re-evaluates fresh. Data changes between runs. Specs may have been updated. The routine must never assume yesterday's success implies today's correctness.
+- **Housekeeping autonomy.** Clean up stale locks, temp files, and partial writes without human intervention. The routine runs unattended. If a prior run left debris, clean it and continue.
+
+## Bridge Coordination
+
+This repo's work is coordinated with the Bridge project (design authority) via QB drives. Bridge owns design decisions, specs, and quality validation. Claude Code owns code execution, testing, and deployment.
+
+*Protocol details to be added when the multi-tool standard is defined (Claude Code Migration drive, Steps 2-4).*
 
 ## Current State (Stage 1 Complete)
 
