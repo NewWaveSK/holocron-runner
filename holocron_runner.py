@@ -14,12 +14,11 @@ Environment variables:
     ANTHROPIC_API_KEY     — required for full/source-refresh tiers (editorial
                             phases). Light/cold-start tiers also need it for
                             board bootstrap.
-    HOLOCRON_DRY_RUN      — optional, default "true". When true, the pipeline
+    HOLOCRON_DRY_RUN      — optional, default "false". When true, the pipeline
                             runs end-to-end but does NOT PATCH user state or
                             display JSONs back to Gist. Quality-gate output
-                            and would-be writes are logged. Stage 2 ships
-                            with DRY_RUN=true so the first cloud runs are
-                            inspectable before flipping to live writes.
+                            and would-be writes are logged. Set to "true" to
+                            preview writes without persisting.
     HOLOCRON_USER_FILTER  — optional, comma-separated usernames to process.
                             Empty = all active users. Use for smoke tests.
 
@@ -58,10 +57,10 @@ NW_STATE_GIST_ID = "961083278c6a59b863314e56c5a60402"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
-# Safety flags — Stage 2 ships with DRY_RUN=true so the first cloud
-# runs are observable before flipping to live writes. Set
-# HOLOCRON_DRY_RUN=false in the routine environment to enable writes.
-DRY_RUN = os.environ.get("HOLOCRON_DRY_RUN", "true").strip().lower() == "true"
+# Safety flags — DRY_RUN defaults to false (live writes). Set
+# HOLOCRON_DRY_RUN=true in the environment to preview writes without
+# PATCHing user state or display JSONs.
+DRY_RUN = os.environ.get("HOLOCRON_DRY_RUN", "false").strip().lower() == "true"
 USER_FILTER = [u.strip() for u in os.environ.get("HOLOCRON_USER_FILTER", "").split(",") if u.strip()]
 
 # Per-phase model routing. None = pure Python, no API call.
@@ -1650,16 +1649,16 @@ def phase_6_json_assembly(s: PipelineStaging) -> None:
         ],
     }
 
-    # more + more_done_*
+    # more + more_{slug}_done
     more_options = []
     used_congrats = {spark_congrats}
     for act_name in ordered[1:]:
         act = next((a for a in activities if a.get("name") == act_name), {})
         slug = _slugify(act_name)
-        more_options.append({"label": f"○ {act_name}", "goto": f"more_done_{slug}"})
+        more_options.append({"label": f"○ {act_name}", "goto": f"more_{slug}_done"})
         c = next((w for w in congrats_pool if w not in used_congrats), "Done")
         used_congrats.add(c)
-        j[f"more_done_{slug}"] = {
+        j[f"more_{slug}_done"] = {
             "inline": f"✓ {act_name} — 🎉 {c} 🎉",
             "question": "☀️ › More Activities › Pick one",
             "options": [
@@ -1914,8 +1913,9 @@ def _pass_3_navigation_integrity(s: PipelineStaging, failures: list[str]) -> Non
     orphans = [k for k in j.keys()
                if k not in reachable
                and k not in expected_non_home_reachable
-               and not k.startswith(("more_done_", "stack_", "together_msg_",
-                                     "progress_groups_msg_"))]
+               and not (k.startswith(("stack_", "together_msg_",
+                                     "progress_groups_msg_"))
+                        or (k.startswith("more_") and k.endswith("_done")))]
     if orphans:
         failures.append(f"pass3:orphan keys not reachable from home: {orphans[:5]}")
 
