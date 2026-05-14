@@ -10,6 +10,51 @@ Hourly autonomous routine that maintains personalized Quicksilver display data f
 - **Pre-commit scan:** Before any commit, verify no string matching `ghp_` followed by 20+ alphanumeric characters appears in any staged file. GitHub automatically revokes leaked tokens.
 - **No fabricated data.** Every credential, ID, URL, and filename must trace to a named source (environment variable, API response, spec file). If a value is unknown, halt and report the gap. Never infer or guess.
 
+## Environment Setup — Universal
+
+Every Claude Code session in this repo follows this setup. Per-drive context (Gist IDs to fetch, step number, design decisions from Bridge) lives in the handoff prompt. Environment lives here.
+
+### Required Environment Variables
+
+Verify both before any work that needs them. If either is missing, halt and ask the user to export it. Never hardcode token values in this file, in `holocron_runner.py`, or in any committed artifact.
+
+- **`GITHUB_TOKEN`** — Gist authentication (read + write). Required for any Gist GET, any Gist PATCH, any QB doc or registry update. Without it the anonymous GitHub API rate limit (~60 requests/hour) trips after ~7 fetches and writes fail entirely.
+  - Verify: `test -n "$GITHUB_TOKEN" && echo "GITHUB_TOKEN: set" || echo "GITHUB_TOKEN: MISSING"`
+  - Required scopes: `gist` (read + write).
+- **`ANTHROPIC_API_KEY`** — Claude API authentication. Required for editorial phases in `holocron_runner.py` (Phase 4 board meeting, Phase 5 triggered evaluations) and for the entire `baseline_runner.py` call.
+  - Verify: `test -n "$ANTHROPIC_API_KEY" && echo "ANTHROPIC_API_KEY: set" || echo "ANTHROPIC_API_KEY: MISSING"`
+  - Required: a key with permission to call the configured models (`claude-sonnet-4-6` per `MODEL_CONFIG`; baseline can override via `BASELINE_MODEL`).
+
+If a step requires one of these and it isn't set, **halt immediately and surface the gap to the user**. Do not work around it with anonymous requests or skip the step silently — that's how Baseline Runner Drive 1.5 Session 3 hit the rate limit and left the script unvalidated.
+
+### Git Workflow
+
+- **Branch naming.** All Claude Code work happens on a feature branch named `claude/<descriptive-slug>-<random-suffix>`. The handoff prompt either names the branch or expects you to create one. Never push directly to `main`.
+- **Commits.** Use the standard commit footer (`https://claude.ai/code/session_<id>`). Pre-commit secret scan applies — see Security above.
+- **PR creation.** When a step's deliverable is "code merged to main," create a PR via the GitHub MCP tools (`mcp__github__create_pull_request`) at the end of the step. Title: short imperative summary. Body: Summary + Test plan sections per the standard template.
+- **Merge.** Squash-merge to `main` once review is clean. Use `mcp__github__merge_pull_request` with `merge_method: "squash"`. Do not enable auto-merge unless asked.
+- **Review.** For Claude Code-authored branches, a self-review against the relevant spec (BASELINE-ELEMENT-REGISTRY.md, HOLOCRON-RUNNER.md, QUICKSILVER-SCHEMA.md, etc.) is sufficient when no human reviewer is on the drive. Document the review checklist outcome in the PR body or in the session report.
+
+### Session Reporting
+
+At the end of every Claude Code session that's part of a multi-tool drive, update **both**:
+
+1. **The QB doc's Claude Code Context section** (template below). PATCH it on whichever Gist hosts the QB doc.
+2. **QB-REGISTRY.md** on the Bridge Gist (`7f983152470de13b03ed60bc0556957b`) — check-in entry with session summary.
+
+```
+## Claude Code Context
+
+**Repo:** [org/repo-name]
+**Branch:** [current branch]
+**Summary:** [1-2 sentences: what was accomplished this session]
+**Last Action:** [what was done, when]
+**Test Status:** [passing/failing/not-yet-run]
+**Open Items:** [anything the next session needs to know]
+```
+
+No separate forensic-style report. The Claude Code Context section is the session report. Keep it lightweight; Bridge reads it to validate code work and pick up the drive.
+
 ## Gist Operations
 
 All Quicksilver data lives on GitHub Gists, not in this repo. The script reads and writes Gists via the GitHub API using `GITHUB_TOKEN`.
@@ -98,7 +143,8 @@ Next session priorities:
 
 ## Testing
 
-Run locally with both tokens set:
+Run locally with both tokens set (see §Environment Setup for the verification pattern):
+
 ```bash
 export GITHUB_TOKEN=ghp_xxx
 export ANTHROPIC_API_KEY=sk-ant-xxx
@@ -108,11 +154,22 @@ python3 -m pip install -r requirements.txt
 python3 holocron_runner.py
 ```
 
+Baseline runner (Drive 1.5):
+
+```bash
+export GITHUB_TOKEN=ghp_xxx
+export ANTHROPIC_API_KEY=sk-ant-xxx
+export BASELINE_DRY_RUN=true
+export BASELINE_USER_FILTER=mats
+python3 baseline_runner.py
+```
+
 The deterministic phases can be smoke-tested without any tokens by constructing a `PipelineStaging` directly and calling `phase_3_field_computation`, `phase_6_json_assembly`, `phase_7_validation`, etc. — useful for offline iteration on a single user state file.
 
 ## Files in This Repo
 
-- `holocron_runner.py` — the script. Single file by design.
-- `requirements.txt` — dependencies (stdlib-only at Stage 1, `anthropic` SDK for Stage 2).
+- `holocron_runner.py` — the Holocron pipeline. Single file by design.
+- `baseline_runner.py` — Baseline Runner (Drive 1.5). Single-call companion for benefit-per-token comparison.
+- `requirements.txt` — dependencies (stdlib-only at Stage 1, `anthropic` SDK for Stage 2 and baseline).
 - `README.md` — setup and architecture overview.
 - `CLAUDE.md` — this file. Institutional memory for Claude Code sessions.
