@@ -63,6 +63,8 @@ All Quicksilver data lives on GitHub Gists, not in this repo. The script reads a
 
 **NW State Gist:** `961083278c6a59b863314e56c5a60402` — hosts per-user state files (USER-gerber.json, USER-mats.json) and event logs.
 
+**Evaluation Gist (Drive 1.5 Step 4):** `5892d49a4d386d09a919ccae13bef709` — Baseline Runner monthly comparison rows. One file per month (`EVAL-YYYY-MM.md`). Written by `eval_pipeline.py` after each user's Holocron run. Owned by the NewWaveSK account.
+
 **Pattern:** Fetch full Gist in one API call → extract files by name → process → PATCH only changed files back. Never inline large payloads in curl `-d` strings. Write to temp file and use `-d @path`.
 
 ## Source of Truth — Specs on the Gist
@@ -122,6 +124,25 @@ This repo's work is coordinated with the Bridge project (design authority) via Q
 - Phase 5c falls back to sequential question selection from QUICKSILVER-CONTENT.md (Question Ranking Model not yet wired).
 - Quality gate scoring is mechanical (no Walker validation, no per-flag investigation tracking).
 
+## Drive 1.5 — Baseline Runner Pipeline (Step 4 wired)
+
+**Three-stage coupled pipeline** runs after `phase_8_write_back` for each user:
+
+- **Stage 1 — Holocron:** `execute_pipeline()` produces `display_json` + accumulates `tokens_used` (Phase 4 is the only Anthropic call currently; deterministic phases contribute zero tokens).
+- **Stage 2 — Baseline:** `baseline_runner.run_baseline_for_user()` produces a second `display_json` from the same user state, event log, and source files via a single prompt.
+- **Stage 3 — Scorer:** `eval_pipeline.run_scorer()` calls `claude-sonnet-4-6` with both display JSONs + `BASELINE-ELEMENT-REGISTRY.md` + `BASELINE-SCORING-MODEL.md`. Returns per-element scores (1-5 or `"skip"`).
+
+Lift % and zone are computed deterministically per Scoring Model formulas. Rows are appended to `EVAL-YYYY-MM.md` on the evaluation Gist (`5892d49a4d386d09a919ccae13bef709`). Per-user exceptions never propagate (per-user isolation).
+
+**Env vars (Drive 1.5):**
+- `EVAL_PIPELINE_ENABLED` — default `true`. `false` skips Stages 2-3 entirely.
+- `EVAL_DRY_RUN` — default mirrors `HOLOCRON_DRY_RUN`. When `true`, the Scorer still runs and rows are staged to `/tmp/eval-rows-<user>.json` but the eval Gist PATCH is skipped.
+- `EVAL_GIST_ID` — override the eval Gist ID (default `5892d49a4d386d09a919ccae13bef709`).
+- `SCORER_MODEL` — override the Scorer model (default `claude-sonnet-4-6`).
+- `BASELINE_MODEL` — override the Baseline model (default `claude-sonnet-4-6`).
+
+**Manual end-to-end harness:** `python3 eval_pipeline.py <username>` runs Holocron + Stages 2-3 + eval write for one user without acquiring the routine lock — useful for validation and iteration.
+
 ## Stage 2 — Validation Path (Step 4 of QB-HOLOCRON-ROUTINE.md)
 
 Next session priorities:
@@ -170,6 +191,7 @@ The deterministic phases can be smoke-tested without any tokens by constructing 
 
 - `holocron_runner.py` — the Holocron pipeline. Single file by design.
 - `baseline_runner.py` — Baseline Runner (Drive 1.5). Single-call companion for benefit-per-token comparison.
+- `eval_pipeline.py` — Drive 1.5 Step 4 pipeline glue. Stages 2 (Baseline) + 3 (Scorer) + eval Gist row append. Imported lazily from `holocron_runner.main()`.
 - `requirements.txt` — dependencies (stdlib-only at Stage 1, `anthropic` SDK for Stage 2 and baseline).
 - `README.md` — setup and architecture overview.
 - `CLAUDE.md` — this file. Institutional memory for Claude Code sessions.

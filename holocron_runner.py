@@ -561,6 +561,10 @@ class PipelineStaging:
         # Per-phase errors (phase_id -> error string)
         self.phase_errors: dict = {}
 
+        # Cumulative API usage for this user's Holocron run. Read by the
+        # eval pipeline (eval_pipeline.run_eval_for_user) for BPT/lift.
+        self.tokens_used: dict = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
 
 # ===========================================================================
 # Phase 1 — Input Assembly + Phase 1b — Field Initialization
@@ -1378,6 +1382,12 @@ def phase_4_board_meeting(s: PipelineStaging) -> None:
         )
         text = resp.content[0].text if resp.content else ""
         s.board_output = _parse_json_response(text)
+        if resp.usage:
+            it = getattr(resp.usage, "input_tokens", 0) or 0
+            ot = getattr(resp.usage, "output_tokens", 0) or 0
+            s.tokens_used["input_tokens"] += it
+            s.tokens_used["output_tokens"] += ot
+            s.tokens_used["total_tokens"] += it + ot
     except Exception as e:
         log_diagnostic("PHASE_4_API_ERR", username=s.username, detail=str(e))
         s.phase_errors[4] = str(e)
@@ -2190,6 +2200,16 @@ def main() -> int:
                     log_diagnostic("VALIDATION_FAIL", username=username, detail=f)
 
             phase_8_write_back(staging, disposition)
+
+            # Drive 1.5 Step 4 — three-stage coupled pipeline.
+            # Stage 2 (Baseline) + Stage 3 (Scorer) + monthly eval Gist row
+            # append. Imported lazily so a missing eval module never blocks
+            # the Holocron routine; per-user exceptions never propagate.
+            try:
+                import eval_pipeline  # local module
+                eval_pipeline.run_eval_for_user(staging, sources)
+            except Exception as e:
+                log_diagnostic("EVAL_PIPELINE_ERR", username=username, detail=str(e))
 
             updates = {
                 "last_refresh": now_iso(),
