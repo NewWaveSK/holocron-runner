@@ -143,6 +143,8 @@ Lift % and zone are computed deterministically per Scoring Model formulas. Rows 
 
 **Manual end-to-end harness:** `python3 eval_pipeline.py <username>` runs Holocron + Stages 2-3 + eval write for one user without acquiring the routine lock — useful for validation and iteration.
 
+**Step 5 First Live Run (May 14, 2026):** All three active users (gerber, mats, rob) scored. 51 element rows on `EVAL-2026-05.md`. Aggregate BPT lift +3,019% lands in Wide gap zone but is cost-driven (40x token gap), not quality-driven — Baseline wins 8 of 17 elements on raw score. L1 finding for Bridge: decision-zone interpretation needs calibration so cost-dominant Wide gap is distinguished from quality-dominant Wide gap. See QB-BASELINE-RUNNER.md Session 5 for full results and open items.
+
 ## Stage 2 — Validation Path (Step 4 of QB-HOLOCRON-ROUTINE.md)
 
 Next session priorities:
