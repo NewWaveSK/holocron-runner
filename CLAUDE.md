@@ -57,42 +57,58 @@ This repo's work is coordinated with the Bridge project (design authority) via Q
 - When you need design clarification that isn't in the spec files, note it in the QB doc's Open Items. Bridge picks it up on next session.
 - Bridge reads this CLAUDE.md before assessing code quality. Keep it current with repo state.
 
-## Current State (Stage 1 Complete)
+## Current State (Stage 2 First Cut)
 
-Implemented: lock management, registry parsing, source fetching, 7-step triage classification, registry write-back, run log (168-entry cap), lock release.
+**Stage 1 complete:** lock management, registry parsing, source fetching, 7-step triage classification, registry write-back, run log (168-entry cap), lock release.
 
-Stubbed (Stage 2): pipeline phase execution (4b), quality scoring (4c), JSON write-back (4d).
+**Stage 2 first cut (May 13, 2026):** All 8 Runner phases wired end-to-end in `holocron_runner.py`. Deterministic phases (1, 2, 3, 5d, 6, 7, 8) run in pure Python. Editorial phases (4 board meeting, 5 triggered evaluations) call the Anthropic API via the `anthropic` SDK. Quality gate scores Phase 6 output on the 6-dimension model and assigns a disposition. Ships with `HOLOCRON_DRY_RUN=true` by default — first cloud runs execute end-to-end and log intended writes without PATCHing user state, display JSONs, or registry rows. Lock acquire/release and run log writes still happen (the run log entry tags `Dry run: true`).
 
-## Stage 2 — What to Build
+**Safety / config env vars (Stage 2):**
+- `HOLOCRON_DRY_RUN` — default `true`. Set to `false` to enable live writes after parity validation passes.
+- `HOLOCRON_USER_FILTER` — comma-separated usernames. Empty = all active users. Use for single-user smoke tests.
 
-Translate the 8 Holocron Runner phases into the per-user pipeline. For each phase:
+**Per-phase model routing:** `MODEL_CONFIG` dict at the top of `holocron_runner.py`. Defaults: Phase 4 = `claude-sonnet-4-6`, Phase 5 = `claude-sonnet-4-6`, all other phases `None` (pure Python). Phase 4 upgrade to Opus is gated on Drive 3 Trust Calibration per HOLOCRON-ROUTINE-SPEC.md §10.
 
-1. Read the phase spec in HOLOCRON-RUNNER.md
-2. Classify: **deterministic** (pure data transformation, Python) or **editorial** (content generation, Anthropic API call)
-3. Implement with mechanical quality gates replacing the interactive proceed gates described in the runner
+**Known first-cut limitations:**
+- Phase 3a++ (circle graduation) — logged as unimplemented; deferred until circles state is populated.
+- Phase 3e (stack patterns) — empty; requires session-level stack grouping in event logs.
+- Spark assignment in Phase 3i falls back to "first activity by creation date" if `user_state.spark_activity` is unset; the full Daily Ranking Model is not wired.
+- Phase 4 collapses sub-phases 4.1-4.6 into a single Anthropic call producing nervous-system classification + one top recommendation + Worth Trying list. Per-board-member scoring expands in a later session.
+- Phase 5c falls back to sequential question selection from QUICKSILVER-CONTENT.md (Question Ranking Model not yet wired).
+- Quality gate scoring is mechanical (no Walker validation, no per-flag investigation tracking).
 
-**Phase overview (from HOLOCRON-RUNNER.md):**
-- Phase 1: Source Assembly (deterministic — gather inputs)
-- Phase 2: Event Extraction (deterministic — parse event log)
-- Phase 3: Field Computation (deterministic — 13 sub-steps covering streaks, medals, schedules, today view, etc.)
-- Phase 4: Board Scoring (editorial — board members score dimensions)
-- Phase 5: Suggestion Generation (editorial — produce suggestions from scores)
-- Phase 5d: Display Assembly (deterministic — build final JSON structure)
-- Phase 6: Relationship Scan (deterministic — verify internal consistency)
-- Phase 7: Quality Gate (deterministic — 6-dimension scoring model)
-- Phase 8: Write-Back (deterministic — PATCH JSON to Gist if quality passes)
+## Stage 2 — Validation Path (Step 4 of QB-HOLOCRON-ROUTINE.md)
 
-**Model routing (future):** Phases 4-5 will eventually use Opus for editorial quality. All other phases use Sonnet or pure Python. The `MODEL_CONFIG` block in the script supports per-phase model selection. Default all to Sonnet initially.
+Next session priorities:
+1. Run `HOLOCRON_DRY_RUN=true HOLOCRON_USER_FILTER=gerber python3 holocron_runner.py` in the routine cloud. Capture stdout (would-be writes + quality gate scores).
+2. Compare the would-be display JSON for gerber against the most recent manual `holocron gerber` output. Score parity against the 6-dimension model.
+3. Repeat for mats, rob. Adjust phase implementations to close parity gaps.
+4. When ≥ 90% parity is achieved per QB Step 4, flip `HOLOCRON_DRY_RUN=false` and let the routine write live.
+
+**Phase overview (HOLOCRON-RUNNER.md), for reference:**
+- Phase 1: Input Assembly + Phase 1b Field Initialization (deterministic)
+- Phase 2: Event Ingest (deterministic — dedupe mark-off, explore, reply)
+- Phase 3: 13 sub-steps (3a graduation, 3a+ badge streak, 3a++ circles, 3b target age, 3c LtL, 3d tally monthly, 3e stack patterns, 3f community medal, 3g raw dimensions, 3h fade, 3i today_view, 3j mark-off responses, 3k completion summary, 3l highlights landing, 3m together landing)
+- Phase 4: Board Meeting (editorial — currently single Anthropic call fusing 4.1-4.6)
+- Phase 5: Triggered Evaluations (5a rebalancing, 5b community contribution, 5c discovery question)
+- Phase 5d: Content Governance Classification (Constitution routing rules)
+- Phase 6: JSON Assembly (deterministic, verbatim pass-through on pre-computed values)
+- Phase 7: Validation (4 passes — menus reconciliation, schema, constitution, navigation)
+- Phase 8: Write-Back (deterministic — PATCH state + display JSON + clear event log, DRY_RUN guarded)
 
 ## Testing
 
-Run locally with `GITHUB_TOKEN` set:
+Run locally with both tokens set:
 ```bash
 export GITHUB_TOKEN=ghp_xxx
+export ANTHROPIC_API_KEY=sk-ant-xxx
+export HOLOCRON_DRY_RUN=true
+export HOLOCRON_USER_FILTER=mats
+python3 -m pip install -r requirements.txt
 python3 holocron_runner.py
 ```
 
-For development, test single users by temporarily filtering in the per-user loop. Compare output against the most recent manual `holocron` run for that user (check HOLOCRON-USERS.md for last run details).
+The deterministic phases can be smoke-tested without any tokens by constructing a `PipelineStaging` directly and calling `phase_3_field_computation`, `phase_6_json_assembly`, `phase_7_validation`, etc. — useful for offline iteration on a single user state file.
 
 ## Files in This Repo
 

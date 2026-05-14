@@ -1,3 +1,5 @@
 # Stage 1: stdlib-only (urllib, json, re, datetime).
-# Stage 2 (next session): add `anthropic` for editorial phase API calls.
-# anthropic>=0.40.0
+# Stage 2: anthropic SDK for editorial phases (Phase 4 board meeting,
+# Phase 5 triggered evaluations). LIGHT / SOURCE-REFRESH-only runs work
+# without it (those phases skip), but FULL/COLD_START need it.
+anthropic>=0.40.0
