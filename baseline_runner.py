@@ -152,10 +152,30 @@ OUTPUT:
 """
 
 
-def build_user_message(username: str, user_state: dict, event_log: list,
-                       sources: dict) -> str:
-    """Assemble the user-message payload sent alongside the system prompt."""
-    parts = [
+def build_user_message_blocks(username: str, user_state: dict, event_log: list,
+                              sources: dict) -> list[dict]:
+    """Assemble the user-message content blocks sent alongside the system prompt.
+
+    Static source files (Schema, Content, Menus, Constitution) come first as
+    their own text blocks. The last static block carries cache_control so the
+    Anthropic API can serve the shared prefix from cache on every per-user
+    call. Per-user content (User State, Event Log) follows as the final block
+    so it sits *after* the cache breakpoint and does not invalidate the
+    cached prefix when it changes.
+    """
+    static_blocks: list[dict] = []
+    for src_name in BASELINE_SOURCE_FILES:
+        src = sources.get(src_name)
+        if not src:
+            continue
+        static_blocks.append({
+            "type": "text",
+            "text": f"== {src_name} ==\n{src['content']}\n",
+        })
+    if static_blocks:
+        static_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+
+    per_user_text = "\n".join([
         f"User: {username}",
         "",
         "== User State ==",
@@ -168,15 +188,8 @@ def build_user_message(username: str, user_state: dict, event_log: list,
         json.dumps(event_log, indent=2),
         "```",
         "",
-    ]
-    for src_name in BASELINE_SOURCE_FILES:
-        src = sources.get(src_name)
-        if not src:
-            continue
-        parts.append(f"== {src_name} ==")
-        parts.append(src["content"])
-        parts.append("")
-    return "\n".join(parts)
+    ])
+    return static_blocks + [{"type": "text", "text": per_user_text}]
 
 
 # ===========================================================================
@@ -242,25 +255,34 @@ def run_baseline_for_user(username: str, user_state: dict, event_log: list,
         return base
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    user_msg = build_user_message(username, user_state, event_log, sources)
+    user_blocks = build_user_message_blocks(username, user_state, event_log, sources)
 
     try:
         resp = client.messages.create(
             model=model,
             max_tokens=BASELINE_MAX_TOKENS,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[{"role": "user", "content": user_blocks}],
         )
         text = resp.content[0].text if resp.content else ""
         display_json = _parse_json_response(text)
-        input_tokens = getattr(resp.usage, "input_tokens", 0) if resp.usage else 0
-        output_tokens = getattr(resp.usage, "output_tokens", 0) if resp.usage else 0
+        usage = resp.usage
+        input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
+        output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
+        cache_creation = getattr(usage, "cache_creation_input_tokens", 0) if usage else 0
+        cache_read = getattr(usage, "cache_read_input_tokens", 0) if usage else 0
+        cache_creation = cache_creation or 0
+        cache_read = cache_read or 0
         base["display_json"] = display_json
         base["raw_text"] = text
         base["usage"] = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
+            "cache_creation_input_tokens": cache_creation,
+            "cache_read_input_tokens": cache_read,
+            "total_tokens": (
+                input_tokens + cache_creation + cache_read + output_tokens
+            ),
         }
         if not display_json:
             base["error"] = "JSON parse failure on baseline response"
@@ -357,6 +379,8 @@ def main() -> int:
         print(
             f"  input_tokens={usage['input_tokens']} "
             f"output_tokens={usage['output_tokens']} "
+            f"cache_creation={usage.get('cache_creation_input_tokens', 0)} "
+            f"cache_read={usage.get('cache_read_input_tokens', 0)} "
             f"total={usage['total_tokens']} "
             f"keys={keys} "
             f"error={err or 'none'}",
